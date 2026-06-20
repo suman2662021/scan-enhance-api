@@ -1,0 +1,21 @@
+# Environment files
+.env
+
+# Go build artifacts and local caches
+.gocache/
+api
+image-compressar
+*.test
+*.out
+coverage.out
+
+# Generated application data
+imagefiles/
+metadata/
+logs/
+uploads/
+
+# Editor and OS files
+.DS_Store
+.idea/
+.vscode/
