@@ -11,7 +11,6 @@ import (
 	"image/draw"
 	"image/jpeg"
 	"image/png"
-	"math"
 	"strings"
 
 	"image-compressar/src/internal/domain"
@@ -126,33 +125,126 @@ func encodeToTarget(img image.Image, format string, targetBytes int64) ([]byte, 
 		format = "jpeg"
 	}
 
-	qualities := []int{92, 88, 84, 80, 76, 72, 68, 64, 60, 56, 52, 48, 44, 40}
-	bestDiff := int64(math.MaxInt64)
-	var best []byte
-
-	for _, quality := range qualities {
-		var buf bytes.Buffer
-		if err := jpeg.Encode(&buf, img, &jpeg.Options{Quality: quality}); err != nil {
+	working := img
+	for attempt := 0; attempt < 8; attempt++ {
+		best, smallestSize, err := encodeJPEGWithinTarget(working, targetBytes)
+		if err != nil {
 			return nil, "", err
 		}
+		if best != nil {
+			return best, "jpeg", nil
+		}
+
+		next := downscaleForTarget(working, targetBytes, smallestSize)
+		if next.Bounds().Dx() == working.Bounds().Dx() && next.Bounds().Dy() == working.Bounds().Dy() {
+			break
+		}
+		working = next
+	}
+
+	return nil, "", fmt.Errorf("unable to encode image within %d bytes", targetBytes)
+}
+
+func encodeJPEGWithinTarget(img image.Image, targetBytes int64) ([]byte, int64, error) {
+	var smallest []byte
+	smallestSize := int64(-1)
+
+	for quality := 100; quality >= 1; quality-- {
+		var buf bytes.Buffer
+		if err := jpeg.Encode(&buf, img, &jpeg.Options{Quality: quality}); err != nil {
+			return nil, 0, err
+		}
 		size := int64(buf.Len())
-		diff := targetBytes - size
-		if diff < 0 {
-			diff = -diff
-		}
 		if size <= targetBytes {
-			return buf.Bytes(), "jpeg", nil
+			return append([]byte(nil), buf.Bytes()...), size, nil
 		}
-		if diff < bestDiff {
-			bestDiff = diff
-			best = append([]byte(nil), buf.Bytes()...)
+		if smallestSize == -1 || size < smallestSize {
+			smallestSize = size
+			smallest = append([]byte(nil), buf.Bytes()...)
 		}
 	}
 
-	if best == nil {
-		return nil, "", errors.New("failed to encode output image")
+	if smallest == nil {
+		return nil, 0, errors.New("failed to encode output image")
 	}
-	return best, "jpeg", nil
+	return nil, smallestSize, nil
+}
+
+func downscaleForTarget(img image.Image, targetBytes, smallestSize int64) image.Image {
+	bounds := img.Bounds()
+	width := bounds.Dx()
+	height := bounds.Dy()
+	if width <= 1 && height <= 1 {
+		return img
+	}
+
+	scaleNumerator := targetBytes * 100
+	scaleDenominator := smallestSize
+	if scaleDenominator <= 0 {
+		scaleDenominator = targetBytes
+	}
+
+	scalePercent := int(integerSqrt((scaleNumerator * 100) / scaleDenominator))
+	if scalePercent > 95 {
+		scalePercent = 95
+	}
+	if scalePercent < 50 {
+		scalePercent = 50
+	}
+
+	newWidth := width * scalePercent / 100
+	newHeight := height * scalePercent / 100
+	if newWidth < 1 {
+		newWidth = 1
+	}
+	if newHeight < 1 {
+		newHeight = 1
+	}
+	if newWidth == width && width > 1 {
+		newWidth = width - 1
+	}
+	if newHeight == height && height > 1 {
+		newHeight = height - 1
+	}
+
+	return resizeNearest(img, newWidth, newHeight)
+}
+
+func resizeNearest(src image.Image, width, height int) *image.RGBA {
+	dst := image.NewRGBA(image.Rect(0, 0, width, height))
+	srcBounds := src.Bounds()
+	srcWidth := srcBounds.Dx()
+	srcHeight := srcBounds.Dy()
+
+	for y := 0; y < height; y++ {
+		srcY := srcBounds.Min.Y + (y*srcHeight)/height
+		if srcY >= srcBounds.Max.Y {
+			srcY = srcBounds.Max.Y - 1
+		}
+		for x := 0; x < width; x++ {
+			srcX := srcBounds.Min.X + (x*srcWidth)/width
+			if srcX >= srcBounds.Max.X {
+				srcX = srcBounds.Max.X - 1
+			}
+			dst.Set(x, y, src.At(srcX, srcY))
+		}
+	}
+
+	return dst
+}
+
+func integerSqrt(n int64) int64 {
+	if n <= 0 {
+		return 0
+	}
+
+	x := n
+	y := (x + 1) / 2
+	for y < x {
+		x = y
+		y = (x + n/x) / 2
+	}
+	return x
 }
 
 func toRGBA(src image.Image) *image.RGBA {
@@ -293,9 +385,9 @@ func sharpen(src *image.RGBA) *image.RGBA {
 			or, og, ob, oa := src.At(x, y).RGBA()
 			br, bg, bb, _ := blurred.At(x, y).RGBA()
 			dst.Set(x, y, color.RGBA{
-				R: clamp8(int(or>>8) + (int(or>>8)-int(br>>8))),
-				G: clamp8(int(og>>8) + (int(og>>8)-int(bg>>8))),
-				B: clamp8(int(ob>>8) + (int(ob>>8)-int(bb>>8))),
+				R: clamp8(int(or>>8) + (int(or>>8) - int(br>>8))),
+				G: clamp8(int(og>>8) + (int(og>>8) - int(bg>>8))),
+				B: clamp8(int(ob>>8) + (int(ob>>8) - int(bb>>8))),
 				A: uint8(oa >> 8),
 			})
 		}

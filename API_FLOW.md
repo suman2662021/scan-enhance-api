@@ -25,7 +25,7 @@ Let's trace what happens when someone calls the main API: `POST /v1/images/proce
 ### Step A: Receiving the Request (`handleProcess` in `server.go`)
 1. **Validation:** Checks if the request is a `POST` method.
 2. **File Extraction:** Reads the uploaded file from the `image` field in the form data.
-3. **Reading Data:** Converts the uploaded file into raw bytes and detects its type (e.g., JPEG or PNG) using the `readUpload` function.
+3. **Reading Data:** Converts the uploaded file into raw bytes and detects its type (e.g., JPEG, PNG, or HEIC) using the `readUpload` function.
 4. **Parsing Settings:** Reads any extra settings the user sent (like `targetSizeKB` or enhancement options) using `parseRequest()`.
 5. **Delegating:** Passes all this data to the `processOne()` function to do the heavy lifting.
 
@@ -34,7 +34,7 @@ This function is the conductor of the orchestra.
 
 1. **Generate an ID:** Creates a unique timestamp-based ID for the image.
 2. **Save Original:** Saves the raw, untouched uploaded image to the hard drive using `s.files.SaveOriginal()`.
-3. **Process Image:** Hands the raw image data to the `Processor` (which lives in `src/internal/processor/processor.go`).
+3. **Process Image:** Hands the raw image data to the `Processor` (which lives in `src/internal/processor/processor.go`). If the upload is HEIC/HEIF, the server first converts it to JPEG for the processor while still preserving the original HEIC file on disk.
 4. **Save Processed:** Once the processor returns the enhanced/compressed image, it saves the new image to the hard drive using `s.files.SaveProcessed()`.
 5. **Save Metadata:** Creates a record containing all details (original size, new size, paths, time taken) and saves it to a JSON file via `s.metadata.Save()`.
 

@@ -48,7 +48,7 @@ By default, the API will run at [http://localhost:8080](http://localhost:8080).
 
 Multipart form fields:
 
-- `image`: file upload, required
+- `image`: file upload, required (`.jpg`, `.jpeg`, `.png`, `.heic`, `.heif`)
 - `targetSizeKB`: numeric, optional, default `500`
 - `outputFormat`: `jpg` or `png`, optional
 - `mode`: defaults to `document_scan`
@@ -133,6 +133,7 @@ curl http://localhost:8080/health
 
 ## Notes
 
-- The current implementation supports `JPEG` and `PNG`.
+- The current implementation supports `JPEG`, `PNG`, and `HEIC`/`HEIF` uploads.
+- HEIC/HEIF uploads are stored in their original format, then converted to JPEG for processing before the final output is written.
 - The processor is intentionally isolated behind an interface so `libvips` and `OpenCV` can replace or augment the built-in pure-Go pipeline later.
 - The deferred infrastructure pieces can be added back once we move from local phase to scaled deployment.
